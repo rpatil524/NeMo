@@ -8,13 +8,13 @@ There are two main ways to load pretrained checkpoints in NeMo:
 
 Refer to the following sections for instructions and examples for each.
 
-Note that these instructions are for loading fully trained checkpoints for evaluation or fine-tuning. For resuming an unfinished 
+Note that these instructions are for loading fully trained checkpoints for evaluation or fine-tuning. For resuming an unfinished
 training experiment, use the Experiment Manager to do so by setting the ``resume_if_exists`` flag to ``True``.
 
 Loading Local Checkpoints
 -------------------------
 
-NeMo automatically saves checkpoints of a model that is trained in a ``.nemo`` format. Alternatively, to manually save the model at any 
+NeMo automatically saves checkpoints of a model that is trained in a ``.nemo`` format. Alternatively, to manually save the model at any
 point, issue :code:`model.save_to(<checkpoint_path>.nemo)`.
 
 If there is a local ``.nemo`` checkpoint that you'd like to load, use the :code:`restore_from()` method:
@@ -37,14 +37,14 @@ Due to transparency, the ASR model can be extracted after training/finetuning se
 made for convenience purpose :code:`hybrid_model.save_asr_model_to(<asr_checkpoint_path>.nemo)`
 
 
-NGC Pretrained Checkpoints
+Pretrained Checkpoints
 --------------------------
 
-The ASR collection has checkpoints of several models trained on various datasets for a variety of tasks. These checkpoints are 
-obtainable via NGC `NeMo Automatic Speech Recognition collection <https://catalog.ngc.nvidia.com/orgs/nvidia/collections/nemo_asr>`_.
-The model cards on NGC contain more information about each of the checkpoints available.
+The ASR collection has checkpoints of several models trained on various datasets for a variety of tasks. These checkpoints are
+obtainable via NGC `NeMo Automatic Speech Recognition collection <https://catalog.ngc.nvidia.com/orgs/nvidia/collections/nemo_asr>`_ or `Huggingface <https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&sort=trending&author=nvidia>`_.
+The model cards on these websites contain more information about each of the checkpoints available.
 
-The tables below list the ASR models available from NGC. The models can be accessed via the :code:`from_pretrained()` method inside
+The tables below list the Top ASR models available from the datasources above. The models can be accessed via the :code:`from_pretrained()` method inside
 the ASR Model class. In general, you can load any of these models with code in the following format:
 
 .. code-block:: python
@@ -133,13 +133,13 @@ Often times, we want to transcribe a large number of files at once (maybe from a
         # process a batch of 32 results (or less if last batch does not contain 32 elements)
         ....
 
+For more information, see `nemo.collections.asr.modules <./api.html#modules>`__. For more information on the general ``Transcription API``, please take a look at :class:`~nemo.collections.asr.parts.mixins.transcription.TranscriptionMixin`. The audio files should be 16KHz mono-channel wav files.
 
 -----
 
-For more information, see `nemo.collections.asr.modules <./api.html#modules>`__. For more information on the general ``Transcription API``, please take a look at :class:`~nemo.collections.asr.parts.mixins.transcription.TranscriptionMixin`. The audio files should be 16KHz mono-channel wav files.
 
 Inference on long audio
-^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 In some cases the audio is too long for standard inference, especially if you're using a model such as Conformer, where the time and memory costs of the attention layers scale quadratically with the duration.
 
@@ -180,15 +180,67 @@ Sometimes, the downsampling module at the earliest stage of the model can take m
     # Speedup conv subsampling factor to speed up the subsampling module.
     asr_model.change_subsampling_conv_chunking_factor(1)  # 1 = auto select
 
+
 .. note::
 
     Only certain models which use depthwise separable convolutions in the downsampling layer support this operation. Please try it out on your model and see if it is supported.
 
 
+
+Inference with Multi-task Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Multi-task models that use structured prompts require additionl task tokens as input, in which case it is recommended to use manifest as input. Below is an example of using the `nvidia/canary-1b` model:
+
+.. code-block:: python
+
+    from nemo.collections.asr.models import EncDecMultiTaskModel
+   
+    # load model
+    canary_model = EncDecMultiTaskModel.from_pretrained('nvidia/canary-1b')
+   
+    # update dcode params
+    decode_cfg = canary_model.cfg.decoding
+    decode_cfg.beam.beam_size = 1
+    canary_model.change_decoding_strategy(decode_cfg)
+
+    # run transcribe
+    predicted_text = canary_model.transcribe(
+          "<path to input manifest file>",
+          batch_size=16,  # batch size to run the inference with
+    )
+
+Here the manifest file should be a json file where each line has the following format:
+
+.. code-block:: bash
+
+    {
+       "audio_filepath": "/path/to/audio.wav",  # path to the audio file
+       "duration": None,  # duration of the audio in seconds, set to `None` to use full audio
+       "taskname": "asr",  # use "ast" for speech-to-text translation
+       "source_lang": "en",  # language of the audio input, set `source_lang`==`target_lang` for ASR
+       "target_lang": "en",  # language of the text output
+       "pnc": "yes",  # whether to have PnC output, choices=['yes', 'no']
+       "answer": "na", # set to non-dummy strings to calculate WER/BLEU scores 
+    }
+
+Note that using manifest allows to specify the task configuration for each audio individually. If we want to use the same task configuration for all the audio files, it can be specified in `transcribe` method directly. 
+
+.. code-block:: python
+
+    canary_model.transcribe(
+            audio=[list of audio files],
+            batch_size=4,  # batch size to run the inference with
+            task="asr",  # use "ast" for speech-to-text translation
+            source_lang="en",  # language of the audio input, set `source_lang`==`target_lang` for ASR
+            target_lang="en",  # language of the text output
+            pnc=True,  # whether to have PnC output, choices=[True, False]
+    )
+
 Inference on Apple M-Series GPU
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To perform inference on Apple Mac M-Series GPU (``mps`` PyTorch device), use PyTorch 2.0 or higher (see :ref:`mac-installation` section). Environment variable ``PYTORCH_ENABLE_MPS_FALLBACK=1`` should be set, since not all operations in PyTorch are currently implemented on ``mps`` device.
+To perform inference on Apple Mac M-Series GPU (``mps`` PyTorch device), use PyTorch 2.0 or higher (see the `mac-installation <https://github.com/NVIDIA/NeMo/blob/stable/README.rst#mac-computers-with-apple-silicon>` section). Environment variable ``PYTORCH_ENABLE_MPS_FALLBACK=1`` should be set, since not all operations in PyTorch are currently implemented on ``mps`` device.
 
 If ``allow_mps=true`` flag is passed to ``speech_to_text_eval.py``, the ``mps`` device will be selected automatically.
 
@@ -209,183 +261,47 @@ Inference Execution Flow Diagram
 
 When preparing your own inference scripts, please follow the execution flow diagram order for correct inference, found at the `examples directory for ASR collection <https://github.com/NVIDIA/NeMo/blob/stable/examples/asr/README.md>`_.
 
+
 Automatic Speech Recognition Models
 -----------------------------------
 
-Below is a list of all the ASR models that are available in NeMo for specific languages, as well as auxiliary language models for certain languages.
+Speech Recognition
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Below is a list of the high quality ASR models available in NeMo for specific languages, all ASR models can be found in :doc:`All checkpoints <./all_chkpt>`. 
 
-Language Models for ASR
-^^^^^^^^^^^^^^^^^^^^^^^
+Multilingual Multitask
+^^^^^^^^^^^^^^^^^^^^^^
 
 .. csv-table::
-   :file: data/asrlm_results.csv
+   :file: data/benchmark_canary.csv
    :align: left
-   :widths: 30, 30, 40
+   :widths: 50,50  
    :header-rows: 1
 
-|
-
-
-.. _asr-checkpoint-list-by-language:
-
-Speech Recognition (Languages)
-------------------------------
-
-English
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_en.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Mandarin
+Parakeet
 ^^^^^^^^
+
 .. csv-table::
-   :file: data/benchmark_zh.csv
+   :file: data/benchmark_parakeet.csv
    :align: left
-   :widths: 40, 10, 50
+   :widths: 50,50
    :header-rows: 1
 
------------------------------
-
-German
-^^^^^^
+Fast Conformer Hybrid
+^^^^^^^^^^^^^^^^^^^^^
 .. csv-table::
-   :file: data/benchmark_de.csv
+   :file: data/benchmark_fastconformer_hybrid.csv
    :align: left
-   :widths: 40, 10, 50
+   :widths: 50,50
    :header-rows: 1
-
------------------------------
-
-French
-^^^^^^
-.. csv-table::
-   :file: data/benchmark_fr.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-   
------------------------------
-
-Polish
-^^^^^^
-.. csv-table::
-   :file: data/benchmark_pl.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Italian
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_it.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Russian
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_ru.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Spanish
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_es.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
-
------------------------------
-
-Catalan
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_ca.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Hindi
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_hi.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Marathi
-^^^^^^^
-.. csv-table::
-   :file: data/benchmark_mr.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Kinyarwanda
-^^^^^^^^^^^
-.. csv-table::
-   :file: data/benchmark_rw.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Belarusian
-^^^^^^^^^^^
-.. csv-table::
-   :file: data/benchmark_by.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Ukrainian
-^^^^^^^^^^^
-.. csv-table::
-   :file: data/benchmark_ua.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
-
-Multilingual
-^^^^^^^^^^^
-.. csv-table::
-   :file: data/benchmark_multilingual.csv
-   :align: left
-   :widths: 40, 10, 50
-   :header-rows: 1
-
------------------------------
 
 Code-Switching
-^^^^^^^^^^^
+^^^^^^^^^^^^^^
+
 .. csv-table::
    :file: data/benchmark_code_switching.csv
    :align: left
-   :widths: 40, 10, 50
+   :widths: 50,50
    :header-rows: 1
+
+

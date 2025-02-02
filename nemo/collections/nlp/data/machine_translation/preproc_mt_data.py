@@ -20,10 +20,9 @@ import pickle
 import tarfile
 import tempfile
 
-import youtokentome as yttm
 from joblib import Parallel, delayed
+from lightning.pytorch import Trainer
 from omegaconf import ListConfig, OmegaConf
-from pytorch_lightning import Trainer
 
 from nemo.collections.common.tokenizers.sentencepiece_tokenizer import SentencePieceTokenizer, create_spt_model
 from nemo.collections.nlp.data.language_modeling.sentence_dataset import SentenceDataset
@@ -34,25 +33,23 @@ from nemo.utils import logging
 
 
 class MTDataPreproc:
-    """ Automatically trains tokenizers and preprocesses machine translation data based on the MTEncDecModelConfig.
-        For training NMT models with datasets larger than 5M sentence pairs, 
-        it can be inefficient to train them without first creating a tarred dataset. 
-        If the user wants to change the tokenizer, vocab size, or batch size, for example, 
-        they must reprocess the data with the correct configuration. 
-        With MTDataPreproc users can sweep through data configurations and the tarred dataset will 
-        be automatically created according to the model configuration.
-        To train tokenizer model and create tarred dataset specify in configuration:
-            model.preproc_out_dir=/path/to/preproc_out
-            model.encoder_tokenizer.vocab_size=32000
-            model.decoder_tokenizer.vocab_size=32000 
-            model.train_ds.use_tarred_dataset=True 
-            model.train_ds.src_file_name=/path/to/src.txt
-            model.train_ds.tgt_file_name=/path/to/tgt.txt
-            model.train_ds.tokens_in_batch=16000 
-        Once a dataset has been constructed based on this configuration, MTDataPreproc will not process it again.
-        If a previously trained tokenizer model or tarred dataset is found, MTDataPreproc will not preprocess the data.
-
-        Note: the only tokenizer currently supported is YouTokenToMe.
+    """Automatically trains tokenizers and preprocesses machine translation data based on the MTEncDecModelConfig.
+    For training NMT models with datasets larger than 5M sentence pairs,
+    it can be inefficient to train them without first creating a tarred dataset.
+    If the user wants to change the tokenizer, vocab size, or batch size, for example,
+    they must reprocess the data with the correct configuration.
+    With MTDataPreproc users can sweep through data configurations and the tarred dataset will
+    be automatically created according to the model configuration.
+    To train tokenizer model and create tarred dataset specify in configuration:
+        model.preproc_out_dir=/path/to/preproc_out
+        model.encoder_tokenizer.vocab_size=32000
+        model.decoder_tokenizer.vocab_size=32000
+        model.train_ds.use_tarred_dataset=True
+        model.train_ds.src_file_name=/path/to/src.txt
+        model.train_ds.tgt_file_name=/path/to/tgt.txt
+        model.train_ds.tokens_in_batch=16000
+    Once a dataset has been constructed based on this configuration, MTDataPreproc will not process it again.
+    If a previously trained tokenizer model or tarred dataset is found, MTDataPreproc will not preprocess the data.
     """
 
     def __init__(self, cfg: MTEncDecModelConfig, trainer: Trainer = None) -> None:
@@ -64,9 +61,9 @@ class MTDataPreproc:
             self.world_size = trainer.num_nodes * trainer.num_devices
 
         if hasattr(cfg, 'train_ds'):
-            supported_tokenizers = ['yttm', 'huggingface', 'sentencepiece', 'megatron', 'byte-level']
+            supported_tokenizers = ['huggingface', 'sentencepiece', 'megatron', 'byte-level']
             supported_multilingual_tokenizers = ['sentencepiece', 'byte-level']
-            supported_train_tokenizers = ['yttm', 'sentencepiece']
+            supported_train_tokenizers = ['sentencepiece']
 
             if (
                 cfg.encoder_tokenizer.get('library') not in supported_tokenizers
@@ -93,7 +90,7 @@ class MTDataPreproc:
                 or cfg.decoder_tokenizer.get('library') in supported_train_tokenizers
             ):
 
-                # Train tokenizer models if using yttm or sentencepiece and they don't exist
+                # Train tokenizer models if using sentencepiece and they don't exist
                 if (
                     cfg.encoder_tokenizer.get('library') in supported_train_tokenizers
                     and cfg.encoder_tokenizer.get('tokenizer_model') is None
@@ -150,12 +147,16 @@ class MTDataPreproc:
                         global_rank=self.global_rank,
                         encoder_training_sample_size=cfg.encoder_tokenizer.get('training_sample_size', -1),
                         decoder_training_sample_size=cfg.decoder_tokenizer.get('training_sample_size', -1),
-                        encoder_special_tokens=OmegaConf.to_container(cfg.encoder_tokenizer.special_tokens)
-                        if cfg.encoder_tokenizer.special_tokens
-                        else None,
-                        decoder_special_tokens=OmegaConf.to_container(cfg.decoder_tokenizer.special_tokens)
-                        if cfg.decoder_tokenizer.special_tokens
-                        else None,
+                        encoder_special_tokens=(
+                            OmegaConf.to_container(cfg.encoder_tokenizer.special_tokens)
+                            if cfg.encoder_tokenizer.special_tokens
+                            else None
+                        ),
+                        decoder_special_tokens=(
+                            OmegaConf.to_container(cfg.decoder_tokenizer.special_tokens)
+                            if cfg.decoder_tokenizer.special_tokens
+                            else None
+                        ),
                         spt_symbols=spt_symbols,
                     )
                     # update config
@@ -283,10 +284,10 @@ class MTDataPreproc:
                     )
 
     def tar_files_to_string(self, tar_files):
-        """ Tar files are generated in the following format: basename.number.tar
+        """Tar files are generated in the following format: basename.number.tar
             Where number is an integer from 1 to the number of tar files.
             We convert this list to a string that can be used in the model config to specify
-            tarred datasets: basename_OP_1..num_tar_files_CL_.tar 
+            tarred datasets: basename_OP_1..num_tar_files_CL_.tar
 
         Args:
             tar_files (List[str]): List of tar files generated by preprocess_parallel_dataset
@@ -312,9 +313,6 @@ class MTDataPreproc:
         encoder_tokenizer_legacy=False,
         decoder_tokenizer_legacy=False,
     ):
-
-        # if encoder_tokenizer_name != 'yttm' or decoder_tokenizer_name != 'yttm':
-        #     raise NotImplementedError(f"Currently we only support yttm tokenizer.")
 
         if encoder_bpe_dropout is None:
             encoder_bpe_dropout = 0.0
@@ -343,15 +341,11 @@ class MTDataPreproc:
 
     @staticmethod
     def get_monolingual_tokenizer(
-        tokenizer_name=None, tokenizer_model=None, bpe_dropout=0.0,
+        tokenizer_name=None,
+        tokenizer_model=None,
+        bpe_dropout=0.0,
     ):
-        if tokenizer_name == 'yttm':
-            if bpe_dropout is None:
-                bpe_dropout = 0.0
-            tokenizer = get_tokenizer(
-                tokenizer_name=tokenizer_name, tokenizer_model=tokenizer_model, bpe_dropout=bpe_dropout,
-            )
-        elif tokenizer_name == 'sentencepiece':
+        if tokenizer_name == 'sentencepiece':
             tokenizer = SentencePieceTokenizer(model_path=tokenizer_model)
         else:
             try:
@@ -397,14 +391,14 @@ class MTDataPreproc:
             src_fname (str): path to source text data
             tgt_fname (str): path to target text data
             out_dir (str): path to write tarred dataset
-            encoder_tokenizer (Any): tokenizer for encoder 
+            encoder_tokenizer (Any): tokenizer for encoder
             decoder_tokenizer (Any): tokenizer for decoder
-            max_seq_length (int): maximum sequence length 
-            min_seq_length (int): minimum sequence length 
-            tokens_in_batch (int): tokens per batch per GPU, effectively batch size 
+            max_seq_length (int): maximum sequence length
+            min_seq_length (int): minimum sequence length
+            tokens_in_batch (int): tokens per batch per GPU, effectively batch size
             lines_per_dataset_fragment (int): number of lines to consider for bucketing and padding
             num_batches_per_tarfile (int): number of batches (pickle files) within each tarfile
-            tar_file_prefix (str) : add string prefix to tar files 
+            tar_file_prefix (str) : add string prefix to tar files
             n_jobs (int): number of processes to use for data processing (-2 to use all but 2)
         """
 
@@ -483,7 +477,10 @@ class MTDataPreproc:
                                 out_dir,
                                 f'remainder-batches.tokens.{tokens_in_batch}.tar_file_{remainder_tar_file_ctr}.tar',
                             )
-                            remainder_tar_file_ptr = tarfile.open(remainder_tar_file_path, 'w',)
+                            remainder_tar_file_ptr = tarfile.open(
+                                remainder_tar_file_path,
+                                'w',
+                            )
                             batch_in_tar_ctr = 0
                     tar_file_ptr.close()
                     os.remove(tar_file_path)
@@ -643,9 +640,9 @@ class MTDataPreproc:
             fname (str): Path to source text data
             out_dir (str): Path to write tarred dataset
             tokenizer (Any): Path to tokenizer model
-            max_seq_length (int): maximum sequence length 
-            min_seq_length (int): minimum sequence length 
-            tokens_in_batch (int): tokens per batch per GPU, effectively batch size 
+            max_seq_length (int): maximum sequence length
+            min_seq_length (int): minimum sequence length
+            tokens_in_batch (int): tokens per batch per GPU, effectively batch size
             lines_per_dataset_fragment (int): number of lines to consider for bucketing and padding
             num_batches_per_tarfile (int): number of batches (pickle files) within each tarfile
             global_rank (int): if set to zero, data will be processed on this node
@@ -773,7 +770,7 @@ class MTDataPreproc:
         decoder_tokenizer_model = None
         os.makedirs(out_dir, exist_ok=True)
 
-        supported_train_tokenizers = ['yttm', 'sentencepiece']
+        supported_train_tokenizers = ['sentencepiece']
 
         if encoder_special_tokens:
             if isinstance(encoder_special_tokens, dict):
@@ -802,35 +799,27 @@ class MTDataPreproc:
                         with tempfile.TemporaryDirectory() as tmp:
                             concat_data_path = os.path.join(tmp, 'concat_dataset.txt')
                             os.system('cat %s %s > %s' % (src_fname, tgt_fname, concat_data_path))
-                            if encoder_tokenizer_name == "yttm":
-                                yttm.BPE.train(
-                                    data=concat_data_path,
-                                    vocab_size=encoder_tokenizer_vocab_size,
-                                    model=encoder_tokenizer_model,
-                                    coverage=encoder_tokenizer_coverage,
-                                    n_threads=-1,
-                                )
-                            else:
-                                create_spt_model(
-                                    data_file=concat_data_path,
-                                    vocab_size=encoder_tokenizer_vocab_size,
-                                    sample_size=encoder_training_sample_size,
-                                    do_lower_case=False,
-                                    tokenizer_type='bpe',
-                                    character_coverage=encoder_tokenizer_coverage,
-                                    output_dir=out_dir,
-                                    bos=True,
-                                    eos=True,
-                                    pad=True,
-                                    control_symbols=spt_symbols,
-                                    user_defined_symbols=encoder_special_tokens,
-                                    byte_fallback=byte_fallback,
-                                    split_digits=split_digits,
-                                    split_by_whitespace=split_by_whitespace,
-                                )
-                                os.rename(
-                                    os.path.join(out_dir, 'tokenizer.model'), encoder_tokenizer_model,
-                                )
+                            create_spt_model(
+                                data_file=concat_data_path,
+                                vocab_size=encoder_tokenizer_vocab_size,
+                                sample_size=encoder_training_sample_size,
+                                do_lower_case=False,
+                                tokenizer_type='bpe',
+                                character_coverage=encoder_tokenizer_coverage,
+                                output_dir=out_dir,
+                                bos=True,
+                                eos=True,
+                                pad=True,
+                                control_symbols=spt_symbols,
+                                user_defined_symbols=encoder_special_tokens,
+                                byte_fallback=byte_fallback,
+                                split_digits=split_digits,
+                                split_by_whitespace=split_by_whitespace,
+                            )
+                            os.rename(
+                                os.path.join(out_dir, 'tokenizer.model'),
+                                encoder_tokenizer_model,
+                            )
         else:
             if encoder_tokenizer_name in supported_train_tokenizers:
                 encoder_tokenizer_model = os.path.join(
@@ -845,34 +834,25 @@ class MTDataPreproc:
                         logging.info(
                             f'Encoder tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.'
                         )
-                        if encoder_tokenizer_name == "yttm":
-                            yttm.BPE.train(
-                                data=src_fname,
-                                vocab_size=encoder_tokenizer_vocab_size,
-                                model=encoder_tokenizer_model,
-                                coverage=encoder_tokenizer_coverage,
-                                n_threads=-1,
-                            )
-                        else:
-                            dir_name = os.path.dirname(encoder_tokenizer_model)
-                            create_spt_model(
-                                data_file=src_fname,
-                                vocab_size=encoder_tokenizer_vocab_size,
-                                sample_size=encoder_training_sample_size,
-                                do_lower_case=False,
-                                tokenizer_type='bpe',
-                                character_coverage=encoder_tokenizer_coverage,
-                                output_dir=dir_name,
-                                bos=True,
-                                eos=True,
-                                pad=True,
-                                control_symbols=spt_symbols,
-                                user_defined_symbols=encoder_special_tokens,
-                                byte_fallback=byte_fallback,
-                                split_digits=split_digits,
-                                split_by_whitespace=split_by_whitespace,
-                            )
-                            os.rename(os.path.join(dir_name, 'tokenizer.model'), encoder_tokenizer_model)
+                        dir_name = os.path.dirname(encoder_tokenizer_model)
+                        create_spt_model(
+                            data_file=src_fname,
+                            vocab_size=encoder_tokenizer_vocab_size,
+                            sample_size=encoder_training_sample_size,
+                            do_lower_case=False,
+                            tokenizer_type='bpe',
+                            character_coverage=encoder_tokenizer_coverage,
+                            output_dir=dir_name,
+                            bos=True,
+                            eos=True,
+                            pad=True,
+                            control_symbols=spt_symbols,
+                            user_defined_symbols=encoder_special_tokens,
+                            byte_fallback=byte_fallback,
+                            split_digits=split_digits,
+                            split_by_whitespace=split_by_whitespace,
+                        )
+                        os.rename(os.path.join(dir_name, 'tokenizer.model'), encoder_tokenizer_model)
 
             if decoder_tokenizer_name in supported_train_tokenizers:
                 decoder_tokenizer_model = os.path.join(
@@ -887,34 +867,25 @@ class MTDataPreproc:
                         logging.info(
                             f'Decoder tokenizer model {decoder_tokenizer_model} not found. Training tokenizer model.'
                         )
-                        if decoder_tokenizer_name == "yttm":
-                            yttm.BPE.train(
-                                data=tgt_fname,
-                                vocab_size=decoder_tokenizer_vocab_size,
-                                model=decoder_tokenizer_model,
-                                coverage=decoder_tokenizer_coverage,
-                                n_threads=-1,
-                            )
-                        else:
-                            dir_name = os.path.dirname(decoder_tokenizer_model)
-                            create_spt_model(
-                                data_file=tgt_fname,
-                                vocab_size=decoder_tokenizer_vocab_size,
-                                sample_size=decoder_training_sample_size,
-                                do_lower_case=False,
-                                tokenizer_type='bpe',
-                                character_coverage=decoder_tokenizer_coverage,
-                                output_dir=dir_name,
-                                bos=True,
-                                eos=True,
-                                pad=True,
-                                control_symbols=spt_symbols,
-                                user_defined_symbols=decoder_special_tokens,
-                                byte_fallback=byte_fallback,
-                                split_digits=split_digits,
-                                split_by_whitespace=split_by_whitespace,
-                            )
-                            os.rename(os.path.join(dir_name, 'tokenizer.model'), decoder_tokenizer_model)
+                        dir_name = os.path.dirname(decoder_tokenizer_model)
+                        create_spt_model(
+                            data_file=tgt_fname,
+                            vocab_size=decoder_tokenizer_vocab_size,
+                            sample_size=decoder_training_sample_size,
+                            do_lower_case=False,
+                            tokenizer_type='bpe',
+                            character_coverage=decoder_tokenizer_coverage,
+                            output_dir=dir_name,
+                            bos=True,
+                            eos=True,
+                            pad=True,
+                            control_symbols=spt_symbols,
+                            user_defined_symbols=decoder_special_tokens,
+                            byte_fallback=byte_fallback,
+                            split_digits=split_digits,
+                            split_by_whitespace=split_by_whitespace,
+                        )
+                        os.rename(os.path.join(dir_name, 'tokenizer.model'), decoder_tokenizer_model)
 
         return encoder_tokenizer_model, decoder_tokenizer_model
 
@@ -1046,7 +1017,10 @@ class MTDataPreproc:
                 tar_file_path = os.path.join(
                     out_dir, 'fragment-%s-batches.tokens.%d.%d.tar' % (fragment_index, num_tokens, tar_file_ctr)
                 )
-                tar_file_ptr = tarfile.open(tar_file_path, 'w',)
+                tar_file_ptr = tarfile.open(
+                    tar_file_path,
+                    'w',
+                )
                 batch_ctr = 0
 
         # return tar files paths that have batches remaining

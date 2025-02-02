@@ -13,8 +13,8 @@
 # limitations under the License.
 from typing import Dict
 
+import lightning.pytorch as pl
 import pytest
-import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig, ListConfig
 
@@ -68,7 +68,8 @@ def squeezeformer_encoder_config() -> Dict:
 class TestInterCTCLoss:
     @pytest.mark.unit
     @pytest.mark.parametrize(
-        "model_class", [EncDecCTCModel, EncDecHybridRNNTCTCModel],
+        "model_class",
+        [EncDecCTCModel, EncDecHybridRNNTCTCModel],
     )
     @pytest.mark.parametrize(
         "encoder_config",
@@ -220,7 +221,7 @@ class TestInterCTCLoss:
         else:
             asr_model = model_class(cfg=model_config)
             asr_model.train()
-            AccessMixin.set_access_enabled(access_enabled=True)
+            AccessMixin.set_access_enabled(access_enabled=True, guid=asr_model.model_guid)
             logprobs, *_ = asr_model.forward(
                 processed_signal=processed_signal, processed_signal_length=processed_length
             )
@@ -241,10 +242,12 @@ class TestInterCTCLoss:
             trainer.fit(
                 asr_model,
                 train_dataloaders=torch.utils.data.DataLoader(
-                    DummyDataset([input_signal, input_length, target, target_length]), collate_fn=lambda x: x[0],
+                    DummyDataset([input_signal, input_length, target, target_length]),
+                    collate_fn=lambda x: x[0],
                 ),
                 val_dataloaders=torch.utils.data.DataLoader(
-                    DummyDataset([input_signal, input_length, target, target_length]), collate_fn=lambda x: x[0],
+                    DummyDataset([input_signal, input_length, target, target_length]),
+                    collate_fn=lambda x: x[0],
                 ),
             )
             required_metrics = ['final_loss'] if len(loss_weights) > 0 else []
@@ -264,7 +267,8 @@ class TestInterCTCLoss:
             trainer.test(
                 asr_model,
                 dataloaders=torch.utils.data.DataLoader(
-                    DummyDataset([input_signal, input_length, target, target_length]), collate_fn=lambda x: x[0],
+                    DummyDataset([input_signal, input_length, target, target_length]),
+                    collate_fn=lambda x: x[0],
                 ),
             )
             required_metrics = [f'inter_ctc_loss_l{idx}' for idx in apply_at_layers]

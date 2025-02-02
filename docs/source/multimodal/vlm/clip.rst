@@ -4,7 +4,7 @@ CLIP
 Model Introduction
 -------------------
 
-Contrastive Language-Image Pre-training (CLIP) :cite:`mm-models-radford2021learning` offers an efficient method for learning image representations using natural language supervision. The essence of CLIP is to train both an image encoder and a text encoder from scratch. The model aims to predict the correct pairings of a batch of (image, text) training examples by jointly training these encoders. During pre-training, CLIP is designed to predict which images and texts form a semantically coherent pair by maximizing the similarity between the correct (image, text) pairs while minimizing the similarity between incorrect pairs. This contrastive learning approach ensures that CLIP learns meaningful and contextually rich representations of both visual and textual data.
+Contrastive Language-Image Pre-training (CLIP) :cite:`mm-models-clip-radford2021learning` offers an efficient method for learning image representations using natural language supervision. The essence of CLIP is to train both an image encoder and a text encoder from scratch. The model aims to predict the correct pairings of a batch of (image, text) training examples by jointly training these encoders. During pre-training, CLIP is designed to predict which images and texts form a semantically coherent pair by maximizing the similarity between the correct (image, text) pairs while minimizing the similarity between incorrect pairs. This contrastive learning approach ensures that CLIP learns meaningful and contextually rich representations of both visual and textual data.
 
 NeMo's implementation of the CLIP model leverages its parallel transformer implementation, specifically the `nemo.collections.nlp.modules.common.megatron.transformer.ParallelTransformer`, to enable model parallelism support in both the text encoder and vision model. This design choice ensures efficient scaling and utilization of resources during training. Additionally, some of the model design and loss implementations in NeMo's CLIP are inspired by the open-source [open_clip](https://github.com/mlfoundations/open_clip) repository.
 
@@ -21,33 +21,34 @@ Text Encoder
 CLIP uses a transformer-based text encoder to encode text features. The text input is tokenized and embedded. Positional embeddings are added to these token embeddings, and this combined representation is then passed through several transformer layers. The output from the last transformer layer corresponding to the first token is used as the text representation. In NeMo, the CLIP text encoder can be instantiated using the :class:`~nemo.collections.multimodal.models.vision_language_foundation.clip.megatron_clip_models.CLIPTextTransformer` class.
 
 Vision Model
-^^^^^^^^^^
+^^^^^^^^^^^^
 
 CLIP's vision model is based on the Vision Transformer (ViT) architecture. The image is first divided into fixed-size patches (e.g., 16x16 pixels). These patches are linearly embedded into a flat vector, which is then used as input to the transformer. The output of the transformer is then pooled to produce a single image representation. In NeMo, the CLIP vision model can be instantiated using the :class:`~nemo.collections.multimodal.models.vision_language_foundation.clip.megatron_clip_models.CLIPVisionTransformer` class.
 
 
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| Model | Image size | Image Model size (M) | Hidden size (FFN size) | Attention heads | Number of layers| Patch dim| Model size (M) | Hidden size| Attention heads | Number of layers| Output dim |
-|       |            | (Vision)             | (Vision)       | (Vision)        | (Vision)        | (Vision) | (Text)         | (Text)     | (Text)          | (Text)          |            |
-+=======+============+======================+================+=================+=================+==========+================+============+=================+=================+============+
-| B/32  | 224        | 87.85                | 768            | 12              | 12              | 16       | 63.43          | 512        | 8               | 12              | 512        |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| B/16  | 224        | 86.19                | 768            | 12              | 12              | 32       | 91.16          | 512        | 8               | 12              | 512        |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| L/14  | 224        | 303.97               | 1024           | 16              | 24              | 14       | 123.65         | 768        | 12              | 12              | 768        |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| H/14  | 224        | 638.08               | 1280           | 20              | 32              | 14       | 354.03         | 1024       | 16              | 24              | 1024       |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| g/14  | 224        | 1012.65              | 1408 (6144)    | 22              | 40              | 14       | 354.03         | 1024       | 16              | 24              | 1024       |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| G/14  | 224        | 1840                | 1664 (8192)    | 16              | 48              | 14       | 590            | 1280       | 20              | 32              | 1280       |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
-| e/14  | 224        | 2200                | 1792 (15360)   | 28              | 56              | 14       | 660            | 1280       | 20              | 36              | 1280       |
-+-------+------------+----------------------+----------------+-----------------+-----------------+----------+----------------+------------+-----------------+-----------------+------------+
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| Model | Image size | Image Model size (M) | Hidden size (FFN size) | Attention heads | Number of layers | Patch dim | Model size (M) | Hidden size | Attention heads | Number of layers | Output dim |
+|       |            | (Vision)             | (Vision)               | (Vision)        | (Vision)         | (Vision)  | (Text)         | (Text)      | (Text)          | (Text)           |            |
++=======+============+======================+========================+=================+==================+===========+================+=============+=================+==================+============+
+| B/32  | 224        | 87.85                | 768                    | 12              | 12               | 16        | 63.43          | 512         | 8               | 12               | 512        |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| B/16  | 224        | 86.19                | 768                    | 12              | 12               | 32        | 91.16          | 512         | 8               | 12               | 512        |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| L/14  | 224        | 303.97               | 1024                   | 16              | 24               | 14        | 123.65         | 768         | 12              | 12               | 768        |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| H/14  | 224        | 638.08               | 1280                   | 20              | 32               | 14        | 354.03         | 1024        | 16              | 24               | 1024       |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| g/14  | 224        | 1012.65              | 1408 (6144)            | 22              | 40               | 14        | 354.03         | 1024        | 16              | 24               | 1024       |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| G/14  | 224        | 1840                 | 1664 (8192)            | 16              | 48               | 14        | 590            | 1280        | 20              | 32               | 1280       |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+| e/14  | 224        | 2200                 | 1792 (15360)           | 28              | 56               | 14        | 660            | 1280        | 20              | 36               | 1280       |
++-------+------------+----------------------+------------------------+-----------------+------------------+-----------+----------------+-------------+-----------------+------------------+------------+
+
 
 
 Model Configuration
-------------------
+-------------------
 
 General Configuration
 ^^^^^^^^^^^^^^^^^^^^^
@@ -152,5 +153,5 @@ References
 .. bibliography:: ../mm_all.bib
     :style: plain
     :filter: docname in docnames
-    :labelprefix: MM-MODELS
-    :keyprefix: mm-models-
+    :labelprefix: MM-MODELS-CLIP
+    :keyprefix: mm-models-clip-

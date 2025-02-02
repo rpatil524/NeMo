@@ -15,6 +15,7 @@
 import json
 import os
 import re
+from collections import defaultdict
 from os.path import expanduser
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
@@ -70,6 +71,7 @@ def item_iter(
     if parse_func is None:
         parse_func = __parse_item
 
+    errors = defaultdict(list)
     k = -1
     logging.debug('Manifest files: %s', str(manifests_files))
     for manifest_file in manifests_files:
@@ -78,11 +80,26 @@ def item_iter(
         logging.debug('Cached at: %s', str(cached_manifest_file))
         with open(expanduser(cached_manifest_file), 'r') as f:
             for line in f:
+                line = line.strip()
+                if not line:
+                    continue
                 k += 1
-                item = parse_func(line, manifest_file)
+                try:
+                    item = parse_func(line, manifest_file)
+                except json.JSONDecodeError:
+                    errors[str(manifest_file)].append(line)
+                    continue
                 item['id'] = k
 
                 yield item
+
+    if len(errors) > 0:
+        for filename, lines in errors.items():
+            logging.error("=============================================")
+            logging.error(f"Failed to parse {len(lines)} lines from manifest file: {filename}")
+            for line in lines:
+                logging.error(f"-- Failed to parse line: `{line}`")
+        raise RuntimeError("Failed to parse some lines from manifest files. See logs for more details.")
 
 
 def __parse_item(line: str, manifest_file: str) -> Dict[str, Any]:
@@ -93,6 +110,8 @@ def __parse_item(line: str, manifest_file: str) -> Dict[str, Any]:
         item['audio_file'] = item.pop('audio_filename')
     elif 'audio_filepath' in item:
         item['audio_file'] = item.pop('audio_filepath')
+    elif 'context' in item:
+        item['audio_file'] = item['context']
 
     # Video File
     if 'video_filename' in item:
@@ -115,7 +134,9 @@ def __parse_item(line: str, manifest_file: str) -> Dict[str, Any]:
         item['video_file'] = get_full_path(audio_file=item['video_file'], manifest_file=manifest_file)
 
     # Duration.
-    if 'duration' not in item:
+    if 'context_duration' in item and 'duration' not in item:
+        item['duration'] = item['context_duration']
+    elif 'duration' not in item:
         raise ValueError(
             f"Manifest file {manifest_file} has invalid json line structure: {line} without proper duration key."
         )
@@ -167,6 +188,15 @@ def __parse_item(line: str, manifest_file: str) -> Dict[str, Any]:
         orig_sr=item.get('orig_sample_rate', None),
         token_labels=item.get('token_labels', None),
         lang=item.get('lang', None),
+        context=item.get('context', None),
+        context_type=item.get('context_type', None),
+        context_duration=item.get('context_duration', None),
+        answer=item.get('answer', None),
+        answer_type=item.get('answer_type', None),
+        answer_duration=item.get('answer_duration', None),
+        question=item.get('question', None),
+        question_type=item.get('question_type', None),
+        task=item.get('task', None),
     )
     return item
 
@@ -230,7 +260,7 @@ def get_full_path(
         if (
             (len(audio_file) < audio_file_len_limit)
             and not os.path.isabs(audio_file)
-            and not os.path.isfile(audio_file)
+            # and not os.path.isfile(audio_file) # Commented out because it slows down dataloading
         ):
             # If audio_file is not available and the path is not absolute, the full path is assumed
             # to be relative to the manifest file parent directory or data directory.

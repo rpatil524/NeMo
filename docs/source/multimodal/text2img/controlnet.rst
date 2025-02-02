@@ -4,16 +4,16 @@ ControlNet
 Model Introduction
 --------------------
 
-ControlNet :cite:`mm-models-controlnetgithub` is a neural network structure to control diffusion models by adding extra conditions.
+ControlNet :cite:`mm-models-cn-controlnetgithub` is a neural network structure to control diffusion models by adding extra conditions.
 It copies the weights of neural network blocks into a "locked" copy and a "trainable" copy. The "trainable" one learns your condition. The "locked" one preserves your model. In this way, the ControlNet can reuse the SD encoder as a deep, strong, robust, and powerful backbone to learn diverse controls.
 NeMo Multimodal provides a training pipeline and example implementation for generating images based on segmentation maps. Users have the flexibility to explore other implementations using their own control input dataset and recipe.
 
 .. image:: ./images/controlnet-structure.png
-   :alt: ControlNet structure on stable diffusion (See :cite:`mm-models-controlnetgithub`)
+   :alt: ControlNet structure on stable diffusion (See :cite:`mm-models-cn-controlnetgithub`)
 
 
 ControlNet Dataset
-____________________
+^^^^^^^^^^^^^^^^^^^^
 
 ControlNet employs the WebDataset format for data ingestion. (See :doc:`Datasets<./datasets>`) Beyond the essential image-text pairs saved in tarfiles with matching names but distinct extensions (like 000001.jpg and 000001.txt), ControlNet also requires control input within the tarfiles, identifiable by their specific extension. By default, the control input should be stored as 000001.png for correct loading and identification in NeMo's implementation.
 
@@ -102,5 +102,5 @@ Reference
 .. bibliography:: ../mm_all.bib
     :style: plain
     :filter: docname in docnames
-    :labelprefix: MM-MODELS
-    :keyprefix: mm-models-
+    :labelprefix: MM-MODELS-CN
+    :keyprefix: mm-models-cn-

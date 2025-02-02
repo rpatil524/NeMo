@@ -19,15 +19,15 @@ import tempfile
 from typing import List, Optional
 
 import torch
+from lightning.pytorch import Trainer
 from omegaconf import DictConfig, OmegaConf, open_dict
-from pytorch_lightning import Trainer
 from tqdm.auto import tqdm
 
 from nemo.collections.asr.losses.ctc import CTCLoss
 from nemo.collections.asr.metrics.wer import WER
 from nemo.collections.asr.parts.mixins import ASRBPEMixin, InterCTCMixin
+from nemo.collections.asr.parts.preprocessing.segment import ChannelSelectorType
 from nemo.collections.asr.parts.submodules.ctc_decoding import CTCDecoding, CTCDecodingConfig
-from nemo.collections.asr.parts.utils.audio_utils import ChannelSelectorType
 from nemo.collections.multimodal.speech_cv.models.visual_rnnt_models import VisualEncDecRNNTModel
 from nemo.core.classes.common import PretrainedModelInfo
 from nemo.core.classes.mixins import AccessMixin
@@ -178,7 +178,9 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
 
                     logits = self.ctc_decoder(encoder_output=encoded)
                     best_hyp, all_hyp = self.ctc_decoding.ctc_decoder_predictions_tensor(
-                        logits, encoded_len, return_hypotheses=return_hypotheses,
+                        logits,
+                        encoded_len,
+                        return_hypotheses=return_hypotheses,
                     )
                     if return_hypotheses:
                         # dump log probs per file
@@ -336,11 +338,11 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
     # PTL-specific methods
     def training_step(self, batch, batch_nb):
         # Reset access registry
-        if AccessMixin.is_access_enabled():
+        if AccessMixin.is_access_enabled(getattr(self, "model_guid", None)):
             AccessMixin.reset_registry(self)
 
         if self.is_interctc_enabled():
-            AccessMixin.set_access_enabled(access_enabled=True)
+            AccessMixin.set_access_enabled(access_enabled=True, guid=self.model_guid)
 
         signal, signal_len, transcript, transcript_len = batch
 
@@ -451,7 +453,7 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
                 tensorboard_logs.update({'training_batch_wer_ctc': ctc_wer})
 
         # Reset access registry
-        if AccessMixin.is_access_enabled():
+        if AccessMixin.is_access_enabled(getattr(self, "model_guid", None)):
             AccessMixin.reset_registry(self)
 
         # Log items
@@ -480,7 +482,7 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         if self.is_interctc_enabled():
-            AccessMixin.set_access_enabled(access_enabled=True)
+            AccessMixin.set_access_enabled(access_enabled=True, guid=self.model_guid)
 
         signal, signal_len, transcript, transcript_len = batch
 
@@ -550,7 +552,12 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
 
             # Add interCTC losses
             ctc_loss, interctc_tensorboard_logs = self.add_interctc_losses(
-                ctc_loss, transcript, transcript_len, compute_wer=True, log_wer_num_denom=True, log_prefix="val_",
+                ctc_loss,
+                transcript,
+                transcript_len,
+                compute_wer=True,
+                log_wer_num_denom=True,
+                log_prefix="val_",
             )
             tensorboard_logs.update(interctc_tensorboard_logs)
 
@@ -559,7 +566,10 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
             loss_value = (1 - self.ctc_loss_weight) * loss_value + self.ctc_loss_weight * ctc_loss
             tensorboard_logs['val_loss'] = loss_value
         self.ctc_wer.update(
-            predictions=log_probs, targets=transcript, target_lengths=transcript_len, predictions_lengths=encoded_len,
+            predictions=log_probs,
+            targets=transcript,
+            target_lengths=transcript_len,
+            predictions_lengths=encoded_len,
         )
         ctc_wer, ctc_wer_num, ctc_wer_denom = self.ctc_wer.compute()
         self.ctc_wer.reset()
@@ -570,7 +580,7 @@ class VisualEncDecHybridRNNTCTCModel(VisualEncDecRNNTModel, ASRBPEMixin, InterCT
         self.log('global_step', torch.tensor(self.trainer.global_step, dtype=torch.float32))
 
         # Reset access registry
-        if AccessMixin.is_access_enabled():
+        if AccessMixin.is_access_enabled(getattr(self, "model_guid", None)):
             AccessMixin.reset_registry(self)
 
         return tensorboard_logs

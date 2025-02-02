@@ -56,14 +56,14 @@ Converting Community Checkpoints
 There is no support for converting community checkpoints to NeMo ViT.
 
 Model Parallelism Adjustment
----------------------------
+----------------------------
 
 ViT Checkpoints
 ^^^^^^^^^^^^^^^^
 
 To adjust model parallelism from original model parallelism size to a new model parallelism size (Note: NeMo ViT currently only supports `pipeline_model_parallel_size=1`):
 
-.. code-block:: python
+.. code-block:: bash
 
    python examples/nlp/language_modeling/megatron_change_num_partitions.py \
     --model_file=/path/to/source.nemo \

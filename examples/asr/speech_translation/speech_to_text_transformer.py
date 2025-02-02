@@ -23,7 +23,7 @@ python speech_to_text_transformer.py \
     model.test_ds.manifest_filepath=<path to test manifest> \
     model.tokenizer.dir=<path to directory of tokenizer (not full path to the vocab file!)> \
     model.tokenizer.model_path=<path to speech tokenizer model> \
-    model.tokenizer.type=<either bpe, wpe, or yttm> \
+    model.tokenizer.type=<either bpe or wpe> \
     trainer.devices=-1 \
     trainer.accelerator="ddp" \
     trainer.max_epochs=100 \
@@ -40,20 +40,21 @@ python speech_to_text_transformer.py \
 
 """
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
 from nemo.collections.asr.models import EncDecTransfModelBPE
 from nemo.core.config import hydra_runner
 from nemo.utils import logging
 from nemo.utils.exp_manager import exp_manager
+from nemo.utils.trainer_utils import resolve_trainer_cfg
 
 
 @hydra_runner(config_path="../conf/speech_translation/", config_name="fast-conformer_transformer")
 def main(cfg):
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
 
-    trainer = pl.Trainer(**cfg.trainer)
+    trainer = pl.Trainer(**resolve_trainer_cfg(cfg.trainer))
     exp_manager(trainer, cfg.get("exp_manager", None))
     asr_model = EncDecTransfModelBPE(cfg=cfg.model, trainer=trainer)
 

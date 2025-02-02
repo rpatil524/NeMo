@@ -2,7 +2,7 @@ Datasets
 ========
 
 Data pipeline overview
------------------
+----------------------
 
 .. note:: It is the responsibility of each user to check the content of the dataset, review the applicable licenses, and determine if it is suitable for their intended use. Users should review any applicable links associated with the dataset before placing the data on their machine.
 
@@ -32,4 +32,4 @@ For webdatasets already downloaded locally, sub-stages 4-6 can be used to precac
 For models that encode image and text on-the-fly, only sub-stages 1-3 need to be run.
 
 Instruction for configuring each sub-stage is provided as a comment next to each field in
-`download_multimodal.yaml <http://TODOURL>`_
+`download_multimodal.yaml <https://github.com/NVIDIA/NeMo-Framework-Launcher/blob/main/launcher_scripts/conf/data_preparation/multimodal/download_multimodal.yaml>`__.
